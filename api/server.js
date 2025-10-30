@@ -11,22 +11,29 @@ import authRoutes from "../src/routes/auth.js";
 import itemRoutes from "../src/routes/items.js";
 import orderRoutes from "../src/routes/orders.js";
 
-// Config
+// Load environment variables
 dotenv.config();
 
-// MongoDB connection (safe for serverless)
+// --------------------
+// ✅ MongoDB Connection (optimized for Vercel)
+// --------------------
 let isConnected = false;
 const connectDB = async () => {
-  if (isConnected) return;
+  if (isConnected) return; // Avoid reconnecting on every request
   try {
-    const conn = await mongoose.connect(process.env.MONGO_URI);
-    isConnected = conn.connections[0].readyState;
+    const db = await mongoose.connect(process.env.MONGO_URI, {
+      serverSelectionTimeoutMS: 5000, // Fail fast if unreachable
+    });
+    isConnected = db.connections[0].readyState;
     console.log("✅ MongoDB connected");
   } catch (err) {
     console.error("❌ MongoDB connection failed:", err.message);
   }
 };
 
+// --------------------
+// Express App Setup
+// --------------------
 const app = express();
 app.use(cors({ origin: "*" }));
 app.use(express.json());
@@ -35,24 +42,30 @@ app.use(express.json());
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Serve static files
+// Serve static files (uploads)
 app.use("/uploads", express.static(path.join(__dirname, "../uploads")));
 
-// Connect to DB before every request
+// Ensure DB connection before handling routes
 app.use(async (req, res, next) => {
   await connectDB();
   next();
 });
 
-// Routes
+// --------------------
+// API Routes
+// --------------------
 app.use("/api/auth", authRoutes);
 app.use("/api/items", itemRoutes);
 app.use("/api/orders", orderRoutes);
 
+// Root route
 app.get("/", (req, res) => {
   res.status(200).json({ message: "🚀 Backend running successfully on Vercel!" });
 });
 
-// Export for Vercel
-export const handler = serverless(app);
+// --------------------
+// Export Serverless Handler
+// --------------------
+const handler = serverless(app);
+export { handler };
 export default handler;
