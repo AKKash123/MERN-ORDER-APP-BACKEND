@@ -4,52 +4,54 @@ import dotenv from "dotenv";
 import mongoose from "mongoose";
 import { fileURLToPath } from "url";
 import path from "path";
-import serverless from "serverless-http";
+import serverless from "serverless-http"; // ✅ convert express app to serverless handler
 
-// Import routes
+// Routes
 import authRoutes from "./src/routes/auth.js";
 import itemRoutes from "./src/routes/items.js";
 import orderRoutes from "./src/routes/orders.js";
 
 dotenv.config();
 
-const app = express();
-
-// Middleware
-app.use(cors());
-app.use(express.json());
-
-// Static
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-app.use("/uploads", express.static(path.join(__dirname, "uploads")));
-
-// MongoDB
+// ✅ Database connection (optimized for Vercel)
 let isConnected = false;
 const connectDB = async () => {
   if (isConnected) return;
   try {
     const conn = await mongoose.connect(process.env.MONGO_URI);
     isConnected = conn.connections[0].readyState;
-    console.log("✅ MongoDB Connected");
-  } catch (err) {
-    console.error("❌ MongoDB Connection Error:", err.message);
+    console.log("✅ MongoDB connected");
+  } catch (error) {
+    console.error("❌ MongoDB connection failed:", error.message);
+    throw new Error("Database connection failed");
   }
 };
 
-// Connect once (serverless safe)
-connectDB();
+// ✅ Express app
+const app = express();
+app.use(express.json());
+app.use(cors({ origin: "*" }));
 
-// Routes
+// File path helpers
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// Serve static uploads
+app.use("/uploads", express.static(path.join(__dirname, "uploads")));
+
+// API routes
 app.use("/api/auth", authRoutes);
 app.use("/api/items", itemRoutes);
 app.use("/api/orders", orderRoutes);
 
-// Test route
-app.get("/api", (req, res) => res.send("✅ API is running fine on Vercel!"));
-
 // Root route
-app.get("/", (req, res) => res.send("🚀 Backend running successfully!"));
+app.get("/", (req, res) => {
+  res.send("🚀 Backend running successfully on Vercel!");
+});
 
-// Serverless handler export
-export default serverless(app);
+// ✅ Connect to DB once before exporting handler
+await connectDB();
+
+// ✅ Export wrapped handler for Vercel
+export const handler = serverless(app);
+export default app;
