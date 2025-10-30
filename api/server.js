@@ -2,72 +2,57 @@ import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
 import mongoose from "mongoose";
-import { fileURLToPath } from "url";
 import path from "path";
+import { fileURLToPath } from "url";
 import serverless from "serverless-http";
 
-// Import Routes
+// Routes
 import authRoutes from "../src/routes/auth.js";
 import itemRoutes from "../src/routes/items.js";
 import orderRoutes from "../src/routes/orders.js";
 
-// Load environment variables
+// Config
 dotenv.config();
 
-// ----------------------
-// 🔗 Database Connection
-// ----------------------
+// MongoDB connection (safe for serverless)
 let isConnected = false;
-
 const connectDB = async () => {
-  if (isConnected) return; // Prevent multiple connections (important for serverless)
-
+  if (isConnected) return;
   try {
     const conn = await mongoose.connect(process.env.MONGO_URI);
     isConnected = conn.connections[0].readyState;
-    console.log("✅ MongoDB connected successfully");
-  } catch (error) {
-    console.error("❌ MongoDB connection failed:", error.message);
+    console.log("✅ MongoDB connected");
+  } catch (err) {
+    console.error("❌ MongoDB connection failed:", err.message);
   }
 };
 
-// ----------------------
-// ⚙️ Express App Setup
-// ----------------------
 const app = express();
-
-app.use(express.json());
 app.use(cors({ origin: "*" }));
+app.use(express.json());
 
-// File path setup
+// __dirname fix for ES modules
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Serve static uploads
+// Serve static files
 app.use("/uploads", express.static(path.join(__dirname, "../uploads")));
 
-// Connect DB before handling routes
+// Connect to DB before every request
 app.use(async (req, res, next) => {
   await connectDB();
   next();
 });
 
-// ----------------------
-// 🚀 API Routes
-// ----------------------
+// Routes
 app.use("/api/auth", authRoutes);
 app.use("/api/items", itemRoutes);
 app.use("/api/orders", orderRoutes);
 
-// ----------------------
-// 🏠 Root Endpoint
-// ----------------------
 app.get("/", (req, res) => {
-  res.send("🚀 Backend is running successfully on Vercel!");
+  res.status(200).json({ message: "🚀 Backend running successfully on Vercel!" });
 });
 
-// ----------------------
-// 🧩 Export for Vercel
-// ----------------------
+// Export for Vercel
 export const handler = serverless(app);
 export default handler;
