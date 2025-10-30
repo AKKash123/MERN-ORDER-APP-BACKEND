@@ -15,7 +15,7 @@ import orderRoutes from "./src/routes/orders.js";
 dotenv.config();
 
 // -----------------------------------------------------------------------------
-// ✅ MongoDB Connection (optimized for serverless on Vercel)
+// ✅ MongoDB Connection (optimized for Vercel)
 // -----------------------------------------------------------------------------
 let isConnected = false;
 
@@ -35,9 +35,6 @@ const connectDB = async () => {
     console.error("❌ MongoDB connection failed:", error.message);
   }
 };
-
-// Connect to DB immediately on cold start (not every request)
-await connectDB();
 
 // -----------------------------------------------------------------------------
 // ✅ Express App Setup
@@ -59,13 +56,21 @@ app.use("/api/auth", authRoutes);
 app.use("/api/items", itemRoutes);
 app.use("/api/orders", orderRoutes);
 
-// Root route (for testing)
+// ✅ Health check route
+app.get("/api", (req, res) => {
+  res.status(200).send("✅ API is running successfully on Vercel!");
+});
+
+// ✅ Root route
 app.get("/", (req, res) => {
-  res.status(200).send("🚀 Wollen Designs Backend running successfully on Vercel!");
+  res.status(200).send("🚀 MERN Order App Backend deployed successfully!");
 });
 
 // -----------------------------------------------------------------------------
-// ✅ Export serverless handler (for Vercel)
+// ✅ Export serverless handler for Vercel
 // -----------------------------------------------------------------------------
-export const handler = serverless(app);
-export default app;
+const handler = serverless(app);
+export { handler };
+
+// Vercel requires **default export** to be the handler
+export default handler;
