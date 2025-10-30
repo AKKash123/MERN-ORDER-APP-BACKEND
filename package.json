@@ -1,29 +1,9 @@
 {
-  "name": "backend",
-  "version": "1.0.0",
-  "description": "Serverless backend for MERN app on Vercel",
-  "main": "server.js",
-  "type": "module",
-  "scripts": {
-    "dev": "nodemon server.js",
-    "start": "node server.js"
-  },
-  "engines": {
-    "node": ">=18.x"
-  },
-  "dependencies": {
-    "bcryptjs": "^3.0.2",
-    "cors": "^2.8.5",
-    "dotenv": "^17.2.3",
-    "express": "^5.1.0",
-    "mongoose": "^8.19.2",
-    "multer": "^2.0.2",
-    "nodemailer": "^7.0.10",
-    "pdfkit": "^0.17.2",
-    "serverless-http": "^3.2.0"
-  },
-  "devDependencies": {
-    "nodemon": "^3.1.10"
-  }
-  
+  "version": 2,
+  "builds": [
+    { "src": "server.js", "use": "@vercel/node" }
+  ],
+  "routes": [
+    { "src": "/(.*)", "dest": "server.js" }
+  ]
 }
