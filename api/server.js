@@ -14,31 +14,34 @@ import orderRoutes from "../src/routes/orders.js";
 // Load environment variables
 dotenv.config();
 
-// -----------------------------
-// ✅ MongoDB Connection (optimized for Vercel)
-// -----------------------------
-let isConnected = false;
+// --------------------
+// ✅ MongoDB Connection (optimized for serverless)
+// --------------------
+let cachedConnection = null;
 
 const connectDB = async () => {
-  if (isConnected) return; // ✅ Reuse connection if already open
+  if (cachedConnection) {
+    // Reuse cached DB connection (prevents timeout)
+    return cachedConnection;
+  }
 
   try {
-    const db = await mongoose.connect(process.env.MONGO_URI, {
-      maxPoolSize: 10,
-      serverSelectionTimeoutMS: 3000, // fail fast if DB unreachable
-      connectTimeoutMS: 4000,
-      socketTimeoutMS: 4500,
+    const conn = await mongoose.connect(process.env.MONGO_URI, {
+      bufferCommands: false,
+      serverSelectionTimeoutMS: 5000,
     });
-    isConnected = db.connections[0].readyState === 1;
-    console.log("✅ MongoDB connected");
+    cachedConnection = conn;
+    console.log("✅ MongoDB connected successfully");
+    return conn;
   } catch (err) {
-    console.error("❌ MongoDB connection failed:", err.message);
+    console.error("❌ MongoDB connection error:", err.message);
+    throw err;
   }
 };
 
-// -----------------------------
-// ✅ Express App Setup
-// -----------------------------
+// --------------------
+// Express App Setup
+// --------------------
 const app = express();
 app.use(cors({ origin: "*" }));
 app.use(express.json());
@@ -47,41 +50,32 @@ app.use(express.json());
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Serve static files (uploads)
+// Static file serving
 app.use("/uploads", express.static(path.join(__dirname, "../uploads")));
 
-// -----------------------------
-// ✅ Connect DB only for /api routes
-// -----------------------------
-app.use("/api", async (req, res, next) => {
-  if (!isConnected) {
-    console.log("🔄 Connecting to MongoDB...");
-    await connectDB();
-  }
-  next();
-});
+// --------------------
+// ✅ Connect once when server starts (not per request)
+// --------------------
+await connectDB(); // Important — connect before routes load
 
-// -----------------------------
-// ✅ API Routes
-// -----------------------------
+// --------------------
+// API Routes
+// --------------------
 app.use("/api/auth", authRoutes);
 app.use("/api/items", itemRoutes);
 app.use("/api/orders", orderRoutes);
 
-// -----------------------------
-// ✅ Root Route (No DB delay)
-// -----------------------------
+// Health check route (root test)
 app.get("/", (req, res) => {
   res.status(200).json({
-    message: "🚀 Meralay Wollen Designs backend is running successfully on Vercel!",
-    status: "OK",
-    environment: process.env.NODE_ENV || "development",
+    success: true,
+    message: "🚀 Backend running successfully on Vercel!",
   });
 });
 
-// -----------------------------
-// ✅ Export Serverless Handler
-// -----------------------------
+// --------------------
+// Export for Vercel
+// --------------------
 const handler = serverless(app);
 export { handler };
 export default handler;
