@@ -15,27 +15,19 @@ import orderRoutes from "../src/routes/orders.js";
 dotenv.config();
 
 // --------------------
-// ✅ MongoDB Connection (optimized for serverless)
+// ✅ MongoDB Connection (optimized for Vercel)
 // --------------------
-let cachedConnection = null;
-
+let isConnected = false;
 const connectDB = async () => {
-  if (cachedConnection) {
-    // Reuse cached DB connection (prevents timeout)
-    return cachedConnection;
-  }
-
+  if (isConnected) return; // Avoid reconnecting on every request
   try {
-    const conn = await mongoose.connect(process.env.MONGO_URI, {
-      bufferCommands: false,
-      serverSelectionTimeoutMS: 5000,
+    const db = await mongoose.connect(process.env.MONGO_URI, {
+      serverSelectionTimeoutMS: 5000, // Fail fast if unreachable
     });
-    cachedConnection = conn;
-    console.log("✅ MongoDB connected successfully");
-    return conn;
+    isConnected = db.connections[0].readyState;
+    console.log("✅ MongoDB connected");
   } catch (err) {
-    console.error("❌ MongoDB connection error:", err.message);
-    throw err;
+    console.error("❌ MongoDB connection failed:", err.message);
   }
 };
 
@@ -50,13 +42,14 @@ app.use(express.json());
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Static file serving
+// Serve static files (uploads)
 app.use("/uploads", express.static(path.join(__dirname, "../uploads")));
 
-// --------------------
-// ✅ Connect once when server starts (not per request)
-// --------------------
-await connectDB(); // Important — connect before routes load
+// Ensure DB connection before handling routes
+app.use(async (req, res, next) => {
+  await connectDB();
+  next();
+});
 
 // --------------------
 // API Routes
@@ -65,16 +58,13 @@ app.use("/api/auth", authRoutes);
 app.use("/api/items", itemRoutes);
 app.use("/api/orders", orderRoutes);
 
-// Health check route (root test)
+// Root route
 app.get("/", (req, res) => {
-  res.status(200).json({
-    success: true,
-    message: "🚀 Backend running successfully on Vercel!",
-  });
+  res.status(200).json({ message: "🚀 Backend running successfully on Vercel!" });
 });
 
 // --------------------
-// Export for Vercel
+// Export Serverless Handler
 // --------------------
 const handler = serverless(app);
 export { handler };
