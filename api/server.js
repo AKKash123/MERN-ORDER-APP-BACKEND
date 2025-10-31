@@ -1,38 +1,29 @@
-// backend/server.js
 import express from "express";
-import mongoose from "mongoose";
 import cors from "cors";
 import dotenv from "dotenv";
+import mongoose from "mongoose";
 import path from "path";
 import { fileURLToPath } from "url";
 import serverless from "serverless-http";
 
-// --- Load environment variables ---
+// Routes
+import authRoutes from "../src/routes/auth.js";
+import itemRoutes from "../src/routes/items.js";
+import orderRoutes from "../src/routes/orders.js";
+
+// Load environment variables
 dotenv.config();
 
-// --- Initialize Express App ---
-const app = express();
-app.use(express.json());
-app.use(cors({ origin: "*" }));
-
-// --- __dirname workaround for ES Modules ---
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
-// --- Database Connection (Optimized for Serverless) ---
+// --------------------
+// ✅ MongoDB Connection (optimized for Vercel)
+// --------------------
 let isConnected = false;
-
 const connectDB = async () => {
-  if (isConnected) return;
-
+  if (isConnected) return; // Avoid reconnecting on every request
   try {
     const db = await mongoose.connect(process.env.MONGO_URI, {
-      maxPoolSize: 10,
-      serverSelectionTimeoutMS: 3000,
-      connectTimeoutMS: 4000,
-      socketTimeoutMS: 4500,
+      serverSelectionTimeoutMS: 5000, // Fail fast if unreachable
     });
-
     isConnected = db.connections[0].readyState;
     console.log("✅ MongoDB connected");
   } catch (err) {
@@ -40,31 +31,41 @@ const connectDB = async () => {
   }
 };
 
-// --- Routes Imports ---
-import authRoutes from "../src/routes/auth.js";
-import itemRoutes from "../src/routes/items.js";
-import orderRoutes from "../src/routes/orders.js";
+// --------------------
+// Express App Setup
+// --------------------
+const app = express();
+app.use(cors({ origin: "*" }));
+app.use(express.json());
 
-// --- Ensure DB Connection Before Handling Requests ---
-app.use(async (req, res, next) => {
+// __dirname fix for ES modules
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// Serve static files (uploads)
+app.use("/uploads", express.static(path.join(__dirname, "../uploads")));
+
+// Ensure DB connection before handling routes
+app.use(async (_req, res, next) => {
   await connectDB();
   next();
 });
 
-// --- API Routes ---
+// --------------------
+// API Routes
+// --------------------
 app.use("/api/auth", authRoutes);
 app.use("/api/items", itemRoutes);
 app.use("/api/orders", orderRoutes);
 
-// --- Static Files (Optional: e.g., images, uploads) ---
-app.use("/uploads", express.static(path.join(__dirname, "../uploads")));
-
-// --- Health Check Route ---
+// Root route
 app.get("/", (req, res) => {
-  res.status(200).json({ message: "🚀 Serverless backend running successfully on Vercel!" });
+  res.status(200).json({ message: "🚀 Backend running successfully on Vercel!" });
 });
 
-// --- Export Handler for Vercel ---
+// --------------------
+// Export Serverless Handler
+// --------------------
 const handler = serverless(app);
 export { handler };
 export default handler;
