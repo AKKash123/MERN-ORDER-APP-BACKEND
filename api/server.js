@@ -7,35 +7,48 @@ import { fileURLToPath } from "url";
 import serverless from "serverless-http";
 
 // --------------------
-// Load environment variables
+// Load Environment Variables
 // --------------------
 dotenv.config();
 
 // --------------------
-// ES Module dirname setup
+// __dirname setup for ES modules
 // --------------------
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 // --------------------
-// MongoDB Connection (lazy + cached)
+// MongoDB Connection (Fast + Safe for Serverless)
 // --------------------
-let isConnected = false;
+let cached = global.mongoose;
 
-const connectDB = async () => {
-  if (isConnected) return;
+if (!cached) {
+  cached = global.mongoose = { conn: null, promise: null };
+}
 
-  try {
-    const conn = await mongoose.connect(process.env.MONGO_URI, {
-      maxPoolSize: 10, // maintain connection pool
-      serverSelectionTimeoutMS: 3000, // prevent long hangs
-    });
-    isConnected = conn.connections[0].readyState;
-    console.log("✅ MongoDB connected");
-  } catch (error) {
-    console.warn("⚠️ MongoDB connection failed:", error.message);
+async function connectDB() {
+  if (cached.conn) return cached.conn;
+
+  if (!cached.promise) {
+    cached.promise = mongoose
+      .connect(process.env.MONGO_URI, {
+        bufferCommands: false,
+        maxPoolSize: 5,
+        serverSelectionTimeoutMS: 3000, // ⏱ fail fast
+      })
+      .then((mongoose) => {
+        console.log("✅ MongoDB connected");
+        return mongoose;
+      })
+      .catch((err) => {
+        console.warn("⚠️ MongoDB connection failed:", err.message);
+        return null;
+      });
   }
-};
+
+  cached.conn = await cached.promise;
+  return cached.conn;
+}
 
 // --------------------
 // Express App Setup
@@ -47,42 +60,35 @@ app.use(express.json());
 app.use("/uploads", express.static(path.join(__dirname, "../uploads")));
 
 // --------------------
-// Routes
+// Root Route — Responds Instantly
 // --------------------
-
-// ✅ Lazy DB connect for each route group
-import authRoutes from "../src/routes/auth.js";
-import itemRoutes from "../src/routes/items.js";
-import orderRoutes from "../src/routes/orders.js";
-
-app.use("/api/auth", async (req, res, next) => {
-  await connectDB();
-  next();
-}, authRoutes);
-
-app.use("/api/items", async (req, res, next) => {
-  await connectDB();
-  next();
-}, itemRoutes);
-
-app.use("/api/orders", async (req, res, next) => {
-  await connectDB();
-  next();
-}, orderRoutes);
-
-// --------------------
-// Root Route (Health Check)
-// --------------------
-app.get("/", (req, res) => {
+app.get("/", async (req, res) => {
   res.status(200).json({
     success: true,
-    message: "🚀 Backend running successfully on Vercel!",
-    environment: process.env.NODE_ENV || "production",
+    message: "🚀 Backend is live on Vercel!",
+    dbConnected: !!cached.conn,
   });
 });
 
 // --------------------
-// Export Serverless Handler
+// Lazy Load Routes (after DB connect)
+// --------------------
+app.use(async (req, res, next) => {
+  await connectDB(); // Connect only when needed
+  next();
+});
+
+// Import routes AFTER DB setup
+import authRoutes from "../src/routes/auth.js";
+import itemRoutes from "../src/routes/items.js";
+import orderRoutes from "../src/routes/orders.js";
+
+app.use("/api/auth", authRoutes);
+app.use("/api/items", itemRoutes);
+app.use("/api/orders", orderRoutes);
+
+// --------------------
+// Export for Vercel
 // --------------------
 const handler = serverless(app);
 export { handler };
