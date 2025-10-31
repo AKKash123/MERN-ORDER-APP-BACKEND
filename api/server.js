@@ -22,7 +22,10 @@ const connectDB = async () => {
   if (isConnected) return; // Avoid reconnecting on every request
   try {
     const db = await mongoose.connect(process.env.MONGO_URI, {
-      serverSelectionTimeoutMS: 5000, // Fail fast if unreachable
+       maxPoolSize: 10, // Reuse up to 10 connections
+      serverSelectionTimeoutMS: 3000, // Quick fail if DB unreachable
+      connectTimeoutMS: 4000,
+      socketTimeoutMS: 4500,
     });
     isConnected = db.connections[0].readyState;
     console.log("✅ MongoDB connected");
