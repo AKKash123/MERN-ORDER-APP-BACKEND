@@ -11,52 +11,54 @@ import authRoutes from "../src/routes/auth.js";
 import itemRoutes from "../src/routes/items.js";
 import orderRoutes from "../src/routes/orders.js";
 
-// Load environment variables
+// Config
 dotenv.config();
 
-// --------------------
-// ✅ MongoDB Connection (optimized for Vercel)
-// --------------------
-let isConnected = false;
-const connectDB = async () => {
-  if (isConnected) return; // Avoid reconnecting on every request
-  try {
-    const db = await mongoose.connect(process.env.MONGO_URI, {
-      serverSelectionTimeoutMS: 5000, // Fail fast if unreachable
-    });
-    isConnected = db.connections[0].readyState;
-    console.log("✅ MongoDB connected");
-  } catch (err) {
-    console.error("❌ MongoDB connection failed:", err.message);
-  }
-};
-
-// --------------------
-// Express App Setup
-// --------------------
 const app = express();
 app.use(cors({ origin: "*" }));
 app.use(express.json());
 
-// __dirname fix for ES modules
+// ES module dirname fix
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Serve static files (uploads)
+// Static files
 app.use("/uploads", express.static(path.join(__dirname, "../uploads")));
 
-// Ensure DB connection before handling routes
-app.use(async (req, res, next) => {
-  await connectDB();
-  next();
-});
+// --------------------
+// ✅ Lazy MongoDB Connection
+// --------------------
+let isConnected = false;
+const connectDB = async () => {
+  if (isConnected) return;
+  try {
+    await mongoose.connect(process.env.MONGO_URI, {
+      serverSelectionTimeoutMS: 3000, // Timeout quickly if unreachable
+    });
+    isConnected = true;
+    console.log("✅ MongoDB connected");
+  } catch (err) {
+    console.warn("⚠️ MongoDB not connected (continuing anyway):", err.message);
+  }
+};
 
 // --------------------
-// API Routes
+// Routes
 // --------------------
-app.use("/api/auth", authRoutes);
-app.use("/api/items", itemRoutes);
-app.use("/api/orders", orderRoutes);
+app.use("/api/auth", async (req, res, next) => {
+  await connectDB();
+  next();
+}, authRoutes);
+
+app.use("/api/items", async (req, res, next) => {
+  await connectDB();
+  next();
+}, itemRoutes);
+
+app.use("/api/orders", async (req, res, next) => {
+  await connectDB();
+  next();
+}, orderRoutes);
 
 // Root route
 app.get("/", (req, res) => {
@@ -64,7 +66,7 @@ app.get("/", (req, res) => {
 });
 
 // --------------------
-// Export Serverless Handler
+// Export
 // --------------------
 const handler = serverless(app);
 export { handler };
