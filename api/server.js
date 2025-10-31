@@ -6,66 +6,82 @@ import path from "path";
 import { fileURLToPath } from "url";
 import serverless from "serverless-http";
 
-// Routes
-import authRoutes from "../src/routes/auth.js";
-import itemRoutes from "../src/routes/items.js";
-import orderRoutes from "../src/routes/orders.js";
-
-// Load environment variables
+// Load env vars
 dotenv.config();
-
-// --------------------
-// ✅ MongoDB Connection (optimized for Vercel)
-// --------------------
-let isConnected = false;
-const connectDB = async () => {
-  if (isConnected) return; // Avoid reconnecting on every request
-  try {
-    const db = await mongoose.connect(process.env.MONGO_URI, {
-      serverSelectionTimeoutMS: 5000, // Fail fast if unreachable
-    });
-    isConnected = db.connections[0].readyState;
-    console.log("✅ MongoDB connected");
-  } catch (err) {
-    console.error("❌ MongoDB connection failed:", err.message);
-  }
-};
-
-// --------------------
-// Express App Setup
-// --------------------
-const app = express();
-app.use(cors({ origin: "*" }));
-app.use(express.json());
 
 // __dirname fix for ES modules
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Serve static files (uploads)
+// -------------------------------------------------
+// ✅ Cached MongoDB Connection (Vercel safe)
+// -------------------------------------------------
+let cached = global.mongoose;
+
+if (!cached) {
+  cached = global.mongoose = { conn: null, promise: null };
+}
+
+async function connectDB() {
+  if (cached.conn) return cached.conn;
+
+  if (!cached.promise) {
+    cached.promise = mongoose
+      .connect(process.env.MONGO_URI, {
+        maxPoolSize: 5,
+        bufferCommands: false,
+        serverSelectionTimeoutMS: 3000, // timeout after 3s
+      })
+      .then((mongoose) => {
+        console.log("✅ MongoDB connected");
+        return mongoose;
+      })
+      .catch((err) => {
+        console.error("❌ MongoDB connect error:", err.message);
+        return null;
+      });
+  }
+  cached.conn = await cached.promise;
+  return cached.conn;
+}
+
+// -------------------------------------------------
+// Express setup
+// -------------------------------------------------
+const app = express();
+app.use(cors({ origin: "*" }));
+app.use(express.json());
 app.use("/uploads", express.static(path.join(__dirname, "../uploads")));
 
-// Ensure DB connection before handling routes
+// -------------------------------------------------
+// Root Route — respond instantly (no DB wait)
+// -------------------------------------------------
+app.get("/", (req, res) => {
+  res.status(200).json({
+    success: true,
+    message: "🚀 Backend running successfully on Vercel!",
+  });
+});
+
+// -------------------------------------------------
+// Load routes after DB connection
+// -------------------------------------------------
 app.use(async (req, res, next) => {
-  await connectDB();
+  await connectDB(); // Only connect when needed
   next();
 });
 
-// --------------------
-// API Routes
-// --------------------
+import authRoutes from "../src/routes/auth.js";
+import itemRoutes from "../src/routes/items.js";
+import orderRoutes from "../src/routes/orders.js";
+
 app.use("/api/auth", authRoutes);
 app.use("/api/items", itemRoutes);
 app.use("/api/orders", orderRoutes);
 
-// Root route
-app.get("/", (req, res) => {
-  res.status(200).json({ message: "🚀 Backend running successfully on Vercel!" });
-});
-
-// --------------------
-// Export Serverless Handler
-// --------------------
+// -------------------------------------------------
+// Export for Vercel
+// -------------------------------------------------
 const handler = serverless(app);
 export { handler };
 export default handler;
